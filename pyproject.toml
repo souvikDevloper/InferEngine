@@ -1,0 +1,22 @@
+[project]
+name = "inferengine"
+version = "0.1.0"
+description = "Continuous batching inference server with paged KV-cache simulation"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110.0",
+  "uvicorn[standard]>=0.27.0",
+  "pydantic>=2.0.0",
+  "prometheus-client>=0.20.0",
+  "httpx>=0.26.0",
+  "numpy>=1.24.0",
+  "torch>=2.0.0"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.23.0"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
+testpaths = ["tests"]
