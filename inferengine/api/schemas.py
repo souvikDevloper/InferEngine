@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GenerateRequest(BaseModel):
@@ -19,3 +21,18 @@ class GenerateResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class CompletionRequest(BaseModel):
+    """OpenAI completions subset consumed by ``vllm bench serve``."""
+
+    model_config = ConfigDict(extra="allow")
+
+    model: str
+    prompt: str
+    max_tokens: int = Field(default=16, ge=1, le=512)
+    stream: bool = False
+    stream_options: dict[str, Any] | None = None
+    temperature: float | None = None
+    top_p: float | None = None
+    ignore_eos: bool = False

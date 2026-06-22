@@ -4,6 +4,7 @@ import asyncio
 import time
 import uuid
 from dataclasses import dataclass, field
+from collections.abc import AsyncIterator
 from typing import Any
 
 from inferengine.core.cache import KVCacheManager
@@ -33,6 +34,7 @@ class RequestState:
     created_at: float = field(default_factory=time.time)
     admitted_at: float | None = None
     done: asyncio.Future | None = None
+    stream: asyncio.Queue[str | None] | None = None
 
     @property
     def is_complete(self) -> bool:
@@ -70,6 +72,21 @@ class ContinuousBatchScheduler:
             await asyncio.wait([self._task], timeout=1)
 
     async def submit(self, prompt: str, max_new_tokens: int | None = None) -> GenerationResult:
+        state = await self._enqueue(prompt, max_new_tokens, streaming=False)
+        return await state.done
+
+    async def stream(self, prompt: str, max_new_tokens: int | None = None) -> AsyncIterator[str]:
+        state = await self._enqueue(prompt, max_new_tokens, streaming=True)
+        assert state.stream is not None
+        while True:
+            token = await state.stream.get()
+            if token is None:
+                break
+            yield token
+        # Propagate cache admission and scheduler failures after ending the stream.
+        await state.done
+
+    async def _enqueue(self, prompt: str, max_new_tokens: int | None, streaming: bool) -> RequestState:
         max_new = max_new_tokens or self.config.max_new_tokens_default
         max_new = min(max_new, self.config.max_new_tokens_limit)
         prompt_tokens = tokenize(prompt)
@@ -78,10 +95,16 @@ class ContinuousBatchScheduler:
             raise ValueError("request exceeds admission token limit")
 
         loop = asyncio.get_running_loop()
-        state = RequestState(prompt=prompt, max_new_tokens=max_new, prompt_tokens=prompt_tokens, done=loop.create_future())
+        state = RequestState(
+            prompt=prompt,
+            max_new_tokens=max_new,
+            prompt_tokens=prompt_tokens,
+            done=loop.create_future(),
+            stream=asyncio.Queue() if streaming else None,
+        )
         await self.waiting.put(state)
         prom.WAITING_REQUESTS.set(self.waiting.qsize())
-        return await state.done
+        return state
 
     async def _loop(self) -> None:
         while self._running:
@@ -103,6 +126,8 @@ class ContinuousBatchScheduler:
                 except MemoryError as exc:
                     if state.done and not state.done.done():
                         state.done.set_exception(exc)
+                    if state.stream is not None:
+                        state.stream.put_nowait(None)
                     prom.REQUESTS_TOTAL.labels(status="cache_rejected").inc()
             prom.WAITING_REQUESTS.set(self.waiting.qsize())
             prom.ACTIVE_REQUESTS.set(len(self.active))
@@ -120,6 +145,8 @@ class ContinuousBatchScheduler:
         for state in batch:
             out = self.model.next_token(state.prompt, state.generated, len(state.generated))
             state.generated.append(out.token)
+            if state.stream is not None:
+                state.stream.put_nowait(out.token + " ")
             self.cache.append_token(state.request_id)
             prom.TOKENS_GENERATED.inc()
             if state.is_complete:
@@ -144,6 +171,8 @@ class ContinuousBatchScheduler:
             prom.REQUEST_LATENCY.observe(latency)
             if state.done and not state.done.done():
                 state.done.set_result(result)
+            if state.stream is not None:
+                state.stream.put_nowait(None)
 
         stats = self.cache.stats()
         prom.KV_USED_PAGES.set(float(stats["used_pages"]))
