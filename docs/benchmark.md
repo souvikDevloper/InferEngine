@@ -40,7 +40,7 @@ source .venv-bench/bin/activate
 pip install -r bench/vllm/requirements.txt
 ```
 
-Start the two servers on different ports with identical model and precision settings. Then run:
+The default harness starts the two servers sequentially with identical model and precision settings. Sequential execution is required on a 24 GiB A10G. Run:
 
 ```bash
 INFERENGINE_URL=http://127.0.0.1:8000 \
@@ -53,4 +53,4 @@ MODEL=meta-llama/Meta-Llama-3-8B \
 
 ## Current verification status
 
-No A10G result is checked into this repository. The present runtime is a CPU-friendly toy decoder that exercises scheduling and API mechanics; it is not a LLaMA-3 8B implementation and must not be used to claim parity with vLLM. The OpenAI-compatible streaming endpoint and comparison harness are ready, but the resume claim remains unverified until a real custom CUDA model path exists and passes the recorded GPU run.
+No A10G result is checked into this repository. InferEngine now has a real Hugging Face LLaMA CUDA backend with batched prefill/decode and a standalone Triton fused-QKV kernel, but the fused kernel is not yet wired into every attention layer and mixed-length KV tensors are repacked. The resume claim remains unverified until the retained A10G run passes the 0.91 gate.

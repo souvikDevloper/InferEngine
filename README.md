@@ -1,6 +1,6 @@
 # InferEngine
 
-InferEngine is an inference-serving systems prototype with continuous request admission, decode-step scheduling, paged KV-capacity accounting, streaming OpenAI-compatible completions, and Prometheus telemetry.
+InferEngine is an inference-serving systems prototype with continuous request admission, decode-step scheduling, paged KV-capacity accounting, a real Hugging Face CUDA backend, streaming OpenAI-compatible completions, and Prometheus telemetry.
 
 The repository now includes a reproducible comparison gate based exclusively on vLLM's official `vllm bench serve` client. It does **not** claim an achieved vLLM-parity number without the required real LLaMA/CUDA implementation and A10G evidence.
 
@@ -13,7 +13,12 @@ The repository now includes a reproducible comparison gate based exclusively on 
 - Server-Sent Events with per-token OpenAI completion chunks and usage totals;
 - vLLM benchmark-compatible request/response contract;
 - official paired benchmark orchestration and a strict 0.91 output-token-throughput gate;
-- tests for scheduling, cache lifecycle, concurrent batching, and streaming API compatibility.
+- tests for scheduling, cache lifecycle, concurrent batching, and streaming API compatibility;
+- real batched prefill/decode for Hugging Face causal language models with per-request KV state;
+- optional Hugging Face `device_map=auto` loading for tight or multi-GPU exploratory environments;
+- a standalone Triton fused-QKV projection kernel with CPU layout and CUDA numerical-correctness tests;
+- zero-delay active decode loop by default, avoiding artificial inter-token sleeps;
+- sequential single-GPU comparison orchestration plus 200 ms NVIDIA utilization/VRAM sampling.
 
 ## Verification status
 
@@ -24,7 +29,7 @@ The repository now includes a reproducible comparison gate based exclusively on 
 | 2.1x longer context at the same VRAM | **not yet verified** | maximum admitted context under a fixed measured VRAM cap |
 | 76% vs 41% GPU utilization | **not yet verified** | timestamped DCGM/NVML samples over identical 1,000-request runs |
 
-The previous repository only contained a deterministic toy decoder and a custom HTTP benchmark. Those are not adequate evidence for GPU or vLLM comparison claims. The custom benchmark remains useful for development, but not for headline numbers.
+The laptop-safe toy backend remains the default. Set `INFERENGINE_BACKEND=transformers` for the real CUDA path. The fused-QKV kernel is correctness-tested but is not yet installed into every LLaMA attention layer, and the current per-request KV tensors are repacked for mixed-length batches; therefore the historical parity and memory claims remain unverified until the A10G run passes.
 
 ## Architecture
 
@@ -34,7 +39,7 @@ flowchart LR
     O --> Q[Waiting queue]
     Q --> S[Continuous scheduler]
     S --> A[Active decode batch]
-    A --> M[Decoder]
+    A --> M[Toy or Hugging Face CUDA decoder]
     A --> K[Paged KV capacity manager]
     S --> P[Prometheus metrics]
 ```
@@ -42,6 +47,19 @@ flowchart LR
 ## Local development
 
 The default decoder is intentionally small and runs on CPU. It validates serving mechanics, not LLaMA performance.
+
+Runtime knobs are environment-driven so GPU benchmark runs can tune without code changes:
+
+```bash
+INFERENGINE_MAX_BATCH_SIZE=8
+INFERENGINE_MAX_PAGES=1024
+INFERENGINE_PAGE_SIZE=16
+INFERENGINE_DECODE_INTERVAL_MS=0
+INFERENGINE_MAX_NEW_TOKENS_LIMIT=512
+INFERENGINE_DEVICE_MAP=auto
+INFERENGINE_TORCH_DTYPE=float16
+INFERENGINE_MAX_MEMORY=0:14GiB,1:14GiB,cpu:48GiB
+```
 
 ```bash
 python -m venv .venv
@@ -71,7 +89,16 @@ MODEL=meta-llama/Meta-Llama-3-8B \
 ./bench/vllm/run_pair.sh
 ```
 
-It retains raw console output, complete official JSON results, per-request details, GPU/software environment, Git revision, and a machine-readable comparison. See [the protocol](docs/benchmark.md).
+It starts InferEngine and vLLM sequentially on the same GPU, then retains raw console output, complete official JSON results, per-request details, GPU/software environment, Git revision, NVIDIA utilization/VRAM samples, and a machine-readable comparison. See [GPU setup](docs/GPU_SETUP.md) and [the protocol](docs/benchmark.md).
+
+For a no-card Lightning Studio exploratory run, use:
+
+```bash
+export HF_TOKEN=hf_your_token
+./bench/vllm/run_lightning.sh
+```
+
+See [Lightning AI setup](docs/LIGHTNING_AI.md). A Lightning result is publishable only with the exact GPU name shown in `environment.txt`; it is not an A10G claim unless the assigned hardware is A10/A10G-class.
 
 ## Development benchmark
 
@@ -88,13 +115,14 @@ Do not compare this script's output with vLLM. It is not the official harness an
 ```text
 inferengine/api/       HTTP and OpenAI-compatible streaming API
 inferengine/core/      scheduler, tokenizer, and page allocator
-inferengine/model/     laptop-safe development decoder
+inferengine/model/     toy and real Hugging Face CUDA decoders
+inferengine/kernels/   optional Triton fused-QKV projection
 inferengine/metrics/   Prometheus instruments
 bench/vllm/            official paired benchmark orchestration and gate
 tests/                 cache, scheduler, and protocol tests
 docs/                  architecture and benchmark contract
 ```
 
-## Next engineering requirement
+## Remaining claim boundary
 
-The parity claim cannot become defensible by tuning the toy decoder. It requires a real LLaMA-3 8B CUDA execution path whose paged KV blocks are consumed by attention kernels, plus an integrated fused QKV kernel. Only after that implementation passes correctness tests should the A10G comparison be run and published.
+The real LLaMA execution path and fused projection kernel now exist, but the headline parity claim still requires the retained A10G result. The next performance step is integrating the fused projection into each LLaMA attention layer and letting attention consume KV pages directly instead of repacking mixed-length caches.

@@ -12,9 +12,8 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from inferengine.api.schemas import CompletionRequest, GenerateRequest, GenerateResponse, HealthResponse
 from inferengine.core.config import EngineConfig
 from inferengine.core.scheduler import ContinuousBatchScheduler
-from inferengine.core.tokenizer import tokenize
 
-scheduler = ContinuousBatchScheduler(EngineConfig())
+scheduler = ContinuousBatchScheduler(EngineConfig.from_env())
 
 
 def create_app() -> FastAPI:
@@ -65,14 +64,14 @@ def create_app() -> FastAPI:
                 "model": req.model,
                 "choices": [{"index": 0, "text": result.text, "finish_reason": result.finish_reason}],
                 "usage": {
-                    "prompt_tokens": len(tokenize(req.prompt)),
+                    "prompt_tokens": scheduler.token_count(req.prompt),
                     "completion_tokens": result.generated_tokens,
-                    "total_tokens": len(tokenize(req.prompt)) + result.generated_tokens,
+                    "total_tokens": scheduler.token_count(req.prompt) + result.generated_tokens,
                 },
             }
 
         request_id = f"cmpl-{uuid.uuid4()}"
-        prompt_tokens = len(tokenize(req.prompt))
+        prompt_tokens = scheduler.token_count(req.prompt)
 
         async def events():
             generated = 0

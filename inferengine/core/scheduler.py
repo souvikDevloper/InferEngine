@@ -9,9 +9,8 @@ from typing import Any
 
 from inferengine.core.cache import KVCacheManager
 from inferengine.core.config import EngineConfig
-from inferengine.core.tokenizer import detokenize, tokenize
 from inferengine.metrics import prom
-from inferengine.model.toy_decoder import TorchToyDecoder
+from inferengine.model.backend import build_backend
 
 
 @dataclass
@@ -29,12 +28,13 @@ class RequestState:
     prompt: str
     max_new_tokens: int
     request_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    prompt_tokens: list[str] = field(default_factory=list)
+    prompt_tokens: list[Any] = field(default_factory=list)
     generated: list[str] = field(default_factory=list)
     created_at: float = field(default_factory=time.time)
     admitted_at: float | None = None
     done: asyncio.Future | None = None
     stream: asyncio.Queue[str | None] | None = None
+    backend_state: Any = None
 
     @property
     def is_complete(self) -> bool:
@@ -49,7 +49,7 @@ class ContinuousBatchScheduler:
             page_size=self.config.page_size,
             policy=self.config.eviction_policy,
         )
-        self.model = TorchToyDecoder()
+        self.model = build_backend()
         self.waiting: asyncio.Queue[RequestState] = asyncio.Queue(maxsize=self.config.max_waiting)
         self.active: dict[str, RequestState] = {}
         self._task: asyncio.Task | None = None
@@ -89,7 +89,7 @@ class ContinuousBatchScheduler:
     async def _enqueue(self, prompt: str, max_new_tokens: int | None, streaming: bool) -> RequestState:
         max_new = max_new_tokens or self.config.max_new_tokens_default
         max_new = min(max_new, self.config.max_new_tokens_limit)
-        prompt_tokens = tokenize(prompt)
+        prompt_tokens = self.model.encode(prompt)
         if len(prompt_tokens) + max_new > self.config.admission_token_limit:
             prom.REQUESTS_TOTAL.labels(status="rejected").inc()
             raise ValueError("request exceeds admission token limit")
@@ -110,10 +110,14 @@ class ContinuousBatchScheduler:
         while self._running:
             await self._admit_waiting()
             if not self.active:
-                await asyncio.sleep(self.config.decode_interval_ms / 1000)
+                idle_sleep_ms = max(1, self.config.decode_interval_ms)
+                await asyncio.sleep(idle_sleep_ms / 1000)
                 continue
             await self._decode_step()
-            await asyncio.sleep(self.config.decode_interval_ms / 1000)
+            if self.config.decode_interval_ms > 0:
+                await asyncio.sleep(self.config.decode_interval_ms / 1000)
+            else:
+                await asyncio.sleep(0)
 
     async def _admit_waiting(self) -> None:
         async with self._lock:
@@ -142,11 +146,11 @@ class ContinuousBatchScheduler:
         prom.BATCH_SIZE.set(batch_size)
         prom.DECODE_STEPS.inc()
 
-        for state in batch:
-            out = self.model.next_token(state.prompt, state.generated, len(state.generated))
-            state.generated.append(out.token)
+        tokens = self.model.next_tokens(batch)
+        for state, token in zip(batch, tokens, strict=True):
+            state.generated.append(token)
             if state.stream is not None:
-                state.stream.put_nowait(out.token + " ")
+                state.stream.put_nowait(token)
             self.cache.append_token(state.request_id)
             prom.TOKENS_GENERATED.inc()
             if state.is_complete:
@@ -154,10 +158,11 @@ class ContinuousBatchScheduler:
 
         for rid in completed:
             state = self.active.pop(rid)
+            self.model.release(state)
             self.cache.complete(rid)
             self.cache.release(rid)
             latency = time.time() - state.created_at
-            text = detokenize(state.generated)
+            text = self.model.detokenize(state.generated)
             result = GenerationResult(
                 request_id=rid,
                 text=text,
@@ -178,6 +183,9 @@ class ContinuousBatchScheduler:
         prom.KV_USED_PAGES.set(float(stats["used_pages"]))
         prom.KV_PRESSURE_EVENTS.set(float(stats["pressure_events"]))
         prom.ACTIVE_REQUESTS.set(len(self.active))
+
+    def token_count(self, prompt: str) -> int:
+        return len(self.model.encode(prompt))
 
     def stats(self) -> dict[str, Any]:
         cache = self.cache.stats()
