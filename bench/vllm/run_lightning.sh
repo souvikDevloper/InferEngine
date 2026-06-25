@@ -30,7 +30,7 @@ if ! command -v uv >/dev/null 2>&1; then
   source "$HOME/.local/bin/env"
 fi
 
-uv venv --python "$PYTHON_BIN" .venv-lightning
+uv venv --clear --python "$PYTHON_BIN" .venv-lightning
 # shellcheck disable=SC1091
 source .venv-lightning/bin/activate
 
