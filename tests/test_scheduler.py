@@ -18,6 +18,35 @@ async def test_scheduler_generates_text():
 
 
 @pytest.mark.asyncio
+async def test_scheduler_backend_failure_unblocks_requests():
+    class FailingBackend:
+        name = "failing"
+
+        def encode(self, prompt: str) -> list[str]:
+            return prompt.split()
+
+        def next_tokens(self, states):
+            raise RuntimeError("decode failed")
+
+        def detokenize(self, tokens):
+            return "".join(tokens)
+
+        def release(self, state) -> None:
+            state.backend_state = None
+
+    s = ContinuousBatchScheduler(EngineConfig(max_batch_size=4, max_pages=64, decode_interval_ms=1))
+    s.model = FailingBackend()
+    await s.start()
+    try:
+        with pytest.raises(RuntimeError, match="decode failed"):
+            await __import__("asyncio").wait_for(s.submit("will fail", 4), timeout=1)
+        assert "decode failed" in s.stats()["last_error"]
+        assert s.stats()["active_requests"] == 0
+    finally:
+        await s.stop()
+
+
+@pytest.mark.asyncio
 async def test_scheduler_batches_concurrent_requests():
     s = ContinuousBatchScheduler(EngineConfig(max_batch_size=8, max_pages=256, decode_interval_ms=1))
     await s.start()

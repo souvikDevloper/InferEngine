@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -11,6 +12,8 @@ from inferengine.core.cache import KVCacheManager
 from inferengine.core.config import EngineConfig
 from inferengine.metrics import prom
 from inferengine.model.backend import build_backend
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -58,6 +61,7 @@ class ContinuousBatchScheduler:
         self._completed = 0
         self._total_batch_size = 0
         self._max_batch_observed = 0
+        self._last_error: str | None = None
         self._lock = asyncio.Lock()
 
     async def start(self) -> None:
@@ -107,17 +111,47 @@ class ContinuousBatchScheduler:
         return state
 
     async def _loop(self) -> None:
-        while self._running:
-            await self._admit_waiting()
-            if not self.active:
-                idle_sleep_ms = max(1, self.config.decode_interval_ms)
-                await asyncio.sleep(idle_sleep_ms / 1000)
-                continue
-            await self._decode_step()
-            if self.config.decode_interval_ms > 0:
-                await asyncio.sleep(self.config.decode_interval_ms / 1000)
-            else:
-                await asyncio.sleep(0)
+        try:
+            while self._running:
+                await self._admit_waiting()
+                if not self.active:
+                    idle_sleep_ms = max(1, self.config.decode_interval_ms)
+                    await asyncio.sleep(idle_sleep_ms / 1000)
+                    continue
+                await self._decode_step()
+                if self.config.decode_interval_ms > 0:
+                    await asyncio.sleep(self.config.decode_interval_ms / 1000)
+                else:
+                    await asyncio.sleep(0)
+        except Exception as exc:
+            self._running = False
+            self._last_error = f"{type(exc).__name__}: {exc}"
+            logger.exception("continuous batching scheduler crashed")
+            self._fail_all(exc)
+
+    def _fail_all(self, exc: Exception) -> None:
+        failed = list(self.active.values())
+        self.active.clear()
+        while not self.waiting.empty():
+            try:
+                failed.append(self.waiting.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        for state in failed:
+            if state.done and not state.done.done():
+                state.done.set_exception(exc)
+            if state.stream is not None:
+                state.stream.put_nowait(None)
+            try:
+                self.model.release(state)
+            except Exception:
+                logger.exception("failed to release backend state for crashed request %s", state.request_id)
+            try:
+                self.cache.release(state.request_id)
+            except KeyError:
+                pass
+        prom.WAITING_REQUESTS.set(self.waiting.qsize())
+        prom.ACTIVE_REQUESTS.set(0)
 
     async def _admit_waiting(self) -> None:
         async with self._lock:
@@ -199,6 +233,7 @@ class ContinuousBatchScheduler:
             "decode_steps": self._steps,
             "average_batch_size": round(avg_batch, 3),
             "max_batch_observed": self._max_batch_observed,
+            "last_error": self._last_error,
             "cache": cache,
             "config": self.config.__dict__,
         }

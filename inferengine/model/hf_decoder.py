@@ -75,6 +75,7 @@ class HuggingFaceContinuousDecoder:
         self.model.eval()
         self._cohort: CohortCache | None = None
         self._cohort_id = 0
+        self._cohort_cache_mode = os.getenv("INFERENGINE_COHORT_CACHE", "auto").strip().lower()
 
     @property
     def name(self) -> str:
@@ -100,19 +101,49 @@ class HuggingFaceContinuousDecoder:
         result = self.model(**batch, use_cache=True, return_dict=True)
         token_ids = result.logits[:, -1, :].argmax(dim=-1)
         lengths = [len(state.prompt_tokens) for state in states]
-        self._cohort_id += 1
-        self._cohort = CohortCache(
-            cohort_id=self._cohort_id,
-            request_ids=tuple(state.request_id for state in states),
-            states=tuple(states),
-            cache=result.past_key_values,
-            lengths=lengths,
-            cache_width=max(lengths) if lengths else 0,
-            next_input_ids=token_ids.detach(),
-        )
-        for row, state in enumerate(states):
-            state.backend_state = CohortMember(cohort_id=self._cohort_id, row=row)
+        if self._should_reuse_prefill_cohort(lengths):
+            self._cohort_id += 1
+            self._cohort = CohortCache(
+                cohort_id=self._cohort_id,
+                request_ids=tuple(state.request_id for state in states),
+                states=tuple(states),
+                cache=result.past_key_values,
+                lengths=lengths,
+                cache_width=max(lengths) if lengths else 0,
+                next_input_ids=token_ids.detach(),
+            )
+            for row, state in enumerate(states):
+                state.backend_state = CohortMember(cohort_id=self._cohort_id, row=row)
+        else:
+            self._cohort = None
+            legacy = self._legacy_cache(result.past_key_values)
+            for row, state in enumerate(states):
+                length = lengths[row]
+                layers = tuple(
+                    (
+                        key[row : row + 1, :, -length:, :].contiguous(),
+                        value[row : row + 1, :, -length:, :].contiguous(),
+                    )
+                    for key, value in legacy
+                )
+                state.backend_state = SequenceCache(
+                    layers=layers,
+                    length=length,
+                    next_input_id=int(token_ids[row]),
+                )
         return dict(zip((state.request_id for state in states), self._decode_tokens(token_ids), strict=True))
+
+    def _should_reuse_prefill_cohort(self, lengths: Sequence[int]) -> bool:
+        """Reuse a raw HF batch cache only when every row has the same valid length.
+
+        Hugging Face cache objects track a single cache position for the batch.
+        With left-padded random-length prompts, reusing the raw padded cache can
+        leave rows with different logical positions in one mutable cache object.
+        That path is fast, but unsafe for vLLM's random-length benchmark data.
+        """
+        if self._cohort_cache_mode in {"0", "false", "off", "disabled", "no"}:
+            return False
+        return bool(lengths) and len(set(lengths)) == 1
 
     def _decode(self, states: Sequence[Any]) -> dict[str, str]:
         if self._can_decode_cohort(states):
