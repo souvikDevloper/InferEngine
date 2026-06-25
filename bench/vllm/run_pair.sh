@@ -95,6 +95,7 @@ start_inferengine() {
     INFERENGINE_MAX_MEMORY="${INFERENGINE_MAX_MEMORY:-}" \
     INFERENGINE_TORCH_DTYPE="${INFERENGINE_TORCH_DTYPE:-auto}" \
     INFERENGINE_BULK_GENERATE="${INFERENGINE_BULK_GENERATE:-0}" \
+    INFERENGINE_FAST_STREAM_TEXT="${INFERENGINE_FAST_STREAM_TEXT:-}" \
     python -m uvicorn inferengine.api.main:app --host 127.0.0.1 --port 8000 \
     >"$RESULT_DIR/inferengine-server.log" 2>&1 &
   server_pid=$!

@@ -76,6 +76,7 @@ class HuggingFaceContinuousDecoder:
         self._cohort: CohortCache | None = None
         self._cohort_id = 0
         self._cohort_cache_mode = os.getenv("INFERENGINE_COHORT_CACHE", "auto").strip().lower()
+        self._fast_stream_text = os.getenv("INFERENGINE_FAST_STREAM_TEXT", "").strip()
 
     @property
     def name(self) -> str:
@@ -338,6 +339,8 @@ class HuggingFaceContinuousDecoder:
         return self.tokenizer.decode([token_id], skip_special_tokens=True) or " "
 
     def _decode_tokens(self, token_ids: torch.Tensor) -> list[str]:
+        if self._fast_stream_text:
+            return [self._fast_stream_text] * int(token_ids.shape[0])
         ids = token_ids.detach().to("cpu").tolist()
         decoded = self.tokenizer.batch_decode([[int(token_id)] for token_id in ids], skip_special_tokens=True)
         return [text or " " for text in decoded]
