@@ -14,6 +14,23 @@ class SequenceCache:
     next_input_id: int
 
 
+@dataclass
+class CohortMember:
+    cohort_id: int
+    row: int
+
+
+@dataclass
+class CohortCache:
+    cohort_id: int
+    request_ids: tuple[str, ...]
+    states: tuple[Any, ...]
+    cache: Any
+    lengths: list[int]
+    cache_width: int
+    next_input_ids: torch.Tensor
+
+
 class HuggingFaceContinuousDecoder:
     """Real causal-LM backend with batched prefill and decode.
 
@@ -56,6 +73,8 @@ class HuggingFaceContinuousDecoder:
             self.model = self.model.to(self.input_device)
         self.input_device = next(self.model.parameters()).device
         self.model.eval()
+        self._cohort: CohortCache | None = None
+        self._cohort_id = 0
 
     @property
     def name(self) -> str:
@@ -80,20 +99,25 @@ class HuggingFaceContinuousDecoder:
         batch = self.tokenizer.pad(encoded, padding=True, return_tensors="pt").to(self.input_device)
         result = self.model(**batch, use_cache=True, return_dict=True)
         token_ids = result.logits[:, -1, :].argmax(dim=-1)
-        legacy = self._legacy_cache(result.past_key_values)
+        lengths = [len(state.prompt_tokens) for state in states]
+        self._cohort_id += 1
+        self._cohort = CohortCache(
+            cohort_id=self._cohort_id,
+            request_ids=tuple(state.request_id for state in states),
+            states=tuple(states),
+            cache=result.past_key_values,
+            lengths=lengths,
+            cache_width=max(lengths) if lengths else 0,
+            next_input_ids=token_ids.detach(),
+        )
         for row, state in enumerate(states):
-            length = len(state.prompt_tokens)
-            layers = tuple(
-                (
-                    key[row : row + 1, :, -length:, :].contiguous(),
-                    value[row : row + 1, :, -length:, :].contiguous(),
-                )
-                for key, value in legacy
-            )
-            state.backend_state = SequenceCache(layers=layers, length=length, next_input_id=int(token_ids[row]))
-        return {state.request_id: self._decode_token(int(token_ids[row])) for row, state in enumerate(states)}
+            state.backend_state = CohortMember(cohort_id=self._cohort_id, row=row)
+        return dict(zip((state.request_id for state in states), self._decode_tokens(token_ids), strict=True))
 
     def _decode(self, states: Sequence[Any]) -> dict[str, str]:
+        if self._can_decode_cohort(states):
+            return self._decode_cohort(states)
+        self._materialize_cohort_members()
         caches: list[SequenceCache] = [state.backend_state for state in states]
         max_length = max(cache.length for cache in caches)
         batched_layers: list[tuple[torch.Tensor, torch.Tensor]] = []
@@ -134,7 +158,70 @@ class HuggingFaceContinuousDecoder:
                 for key, value in legacy
             )
             state.backend_state = SequenceCache(layers=layers, length=length, next_input_id=int(token_ids[row]))
-        return {state.request_id: self._decode_token(int(token_ids[row])) for row, state in enumerate(states)}
+        return dict(zip((state.request_id for state in states), self._decode_tokens(token_ids), strict=True))
+
+    def _can_decode_cohort(self, states: Sequence[Any]) -> bool:
+        if self._cohort is None or len(states) != len(self._cohort.request_ids):
+            return False
+        ids = tuple(state.request_id for state in states)
+        if ids != self._cohort.request_ids:
+            return False
+        return all(
+            isinstance(state.backend_state, CohortMember) and state.backend_state.cohort_id == self._cohort.cohort_id
+            for state in states
+        )
+
+    def _decode_cohort(self, states: Sequence[Any]) -> dict[str, str]:
+        assert self._cohort is not None
+        cohort = self._cohort
+        input_ids = cohort.next_input_ids.reshape(-1, 1).to(self.input_device, non_blocking=True)
+        attention_mask = torch.zeros((len(states), cohort.cache_width + 1), dtype=torch.long, device=self.input_device)
+        for row, length in enumerate(cohort.lengths):
+            attention_mask[row, -(length + 1) :] = 1
+        position_ids = torch.tensor([[length] for length in cohort.lengths], dtype=torch.long, device=self.input_device)
+        result = self.model(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            position_ids=position_ids,
+            past_key_values=cohort.cache,
+            use_cache=True,
+            return_dict=True,
+        )
+        token_ids = result.logits[:, -1, :].argmax(dim=-1)
+        cohort.cache = result.past_key_values
+        cohort.lengths = [length + 1 for length in cohort.lengths]
+        cohort.cache_width += 1
+        cohort.next_input_ids = token_ids.detach()
+        return dict(zip((state.request_id for state in states), self._decode_tokens(token_ids), strict=True))
+
+    def _materialize_cohort_members(self) -> None:
+        """Convert the fast batched cache back into per-request caches if the cohort changes.
+
+        This keeps the implementation correct for mixed max-token requests or mid-cohort
+        admission/eviction while preserving the zero-repack path for stable benchmark
+        cohorts.
+        """
+        if self._cohort is None:
+            return
+        cohort = self._cohort
+        legacy = self._legacy_cache(cohort.cache)
+        for row, state in enumerate(cohort.states):
+            if not isinstance(state.backend_state, CohortMember) or state.backend_state.cohort_id != cohort.cohort_id:
+                continue
+            length = cohort.lengths[row]
+            layers = tuple(
+                (
+                    key[row : row + 1, :, -length:, :].contiguous(),
+                    value[row : row + 1, :, -length:, :].contiguous(),
+                )
+                for key, value in legacy
+            )
+            state.backend_state = SequenceCache(
+                layers=layers,
+                length=length,
+                next_input_id=int(cohort.next_input_ids[row]),
+            )
+        self._cohort = None
 
     @staticmethod
     def _legacy_cache(cache: Any) -> tuple[tuple[torch.Tensor, torch.Tensor], ...]:
@@ -184,8 +271,15 @@ class HuggingFaceContinuousDecoder:
     def _decode_token(self, token_id: int) -> str:
         return self.tokenizer.decode([token_id], skip_special_tokens=True) or " "
 
+    def _decode_tokens(self, token_ids: torch.Tensor) -> list[str]:
+        ids = token_ids.detach().to("cpu").tolist()
+        decoded = self.tokenizer.batch_decode([[int(token_id)] for token_id in ids], skip_special_tokens=True)
+        return [text or " " for text in decoded]
+
     def detokenize(self, tokens: Sequence[str]) -> str:
         return "".join(tokens)
 
     def release(self, state: Any) -> None:
+        if self._cohort is not None and state.request_id in self._cohort.request_ids:
+            self._materialize_cohort_members()
         state.backend_state = None
