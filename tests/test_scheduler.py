@@ -47,6 +47,38 @@ async def test_scheduler_backend_failure_unblocks_requests():
 
 
 @pytest.mark.asyncio
+async def test_scheduler_bulk_generate_completes_batched_requests():
+    class BulkBackend:
+        name = "bulk"
+
+        def encode(self, prompt: str) -> list[str]:
+            return prompt.split()
+
+        def next_tokens(self, states):
+            raise AssertionError("bulk mode should not use per-token decode")
+
+        def complete_batch(self, states):
+            return [["x"] * state.max_new_tokens for state in states]
+
+        def detokenize(self, tokens):
+            return "".join(tokens)
+
+        def release(self, state) -> None:
+            state.backend_state = None
+
+    s = ContinuousBatchScheduler(EngineConfig(max_batch_size=4, max_pages=64, decode_interval_ms=1, bulk_generate=True))
+    s.model = BulkBackend()
+    await s.start()
+    try:
+        results = await __import__("asyncio").gather(*(s.submit(f"bulk {i}", 3) for i in range(4)))
+        assert [result.generated_tokens for result in results] == [3, 3, 3, 3]
+        assert s.stats()["decode_steps"] == 1
+        assert s.stats()["completed_requests"] == 4
+    finally:
+        await s.stop()
+
+
+@pytest.mark.asyncio
 async def test_scheduler_batches_concurrent_requests():
     s = ContinuousBatchScheduler(EngineConfig(max_batch_size=8, max_pages=256, decode_interval_ms=1))
     await s.start()

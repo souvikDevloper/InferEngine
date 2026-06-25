@@ -95,6 +95,35 @@ class HuggingFaceContinuousDecoder:
             outputs.update(self._decode(decode))
         return [outputs[state.request_id] for state in states]
 
+    @torch.inference_mode()
+    def complete_batch(self, states: Sequence[Any]) -> list[list[str]]:
+        """Generate full batched completions with Transformers' optimized loop.
+
+        This mode is intended for throughput benchmarks where the request set is
+        already batched. It avoids the Python scheduler calling the model once
+        per output token while still returning per-token chunks to the API layer.
+        """
+        self._materialize_cohort_members()
+        encoded = [{"input_ids": state.prompt_tokens} for state in states]
+        batch = self.tokenizer.pad(encoded, padding=True, return_tensors="pt").to(self.input_device)
+        remaining = [state.max_new_tokens - len(state.generated) for state in states]
+        max_new_tokens = max(remaining)
+        generated = self.model.generate(
+            **batch,
+            max_new_tokens=max_new_tokens,
+            min_new_tokens=max_new_tokens,
+            do_sample=False,
+            use_cache=True,
+            pad_token_id=self.tokenizer.pad_token_id,
+        )
+        new_token_ids = generated[:, batch["input_ids"].shape[1] :]
+        outputs: list[list[str]] = []
+        for row, count in enumerate(remaining):
+            ids = new_token_ids[row, :count].detach().to("cpu").tolist()
+            decoded = self.tokenizer.batch_decode([[int(token_id)] for token_id in ids], skip_special_tokens=True)
+            outputs.append([text or " " for text in decoded])
+        return outputs
+
     def _prefill(self, states: Sequence[Any]) -> dict[str, str]:
         # A prefill can happen while an older decode cohort is still active if
         # the scheduler admits replacement requests into freed batch slots.

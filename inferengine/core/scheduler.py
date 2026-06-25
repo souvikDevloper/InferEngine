@@ -180,6 +180,10 @@ class ContinuousBatchScheduler:
         prom.BATCH_SIZE.set(batch_size)
         prom.DECODE_STEPS.inc()
 
+        if self.config.bulk_generate and hasattr(self.model, "complete_batch"):
+            self._complete_batch(batch)
+            return
+
         tokens = self.model.next_tokens(batch)
         for state, token in zip(batch, tokens, strict=True):
             state.generated.append(token)
@@ -187,6 +191,49 @@ class ContinuousBatchScheduler:
                 state.stream.put_nowait(token)
             self.cache.append_token(state.request_id)
             prom.TOKENS_GENERATED.inc()
+            if state.is_complete:
+                completed.append(state.request_id)
+
+        for rid in completed:
+            state = self.active.pop(rid)
+            self.model.release(state)
+            self.cache.complete(rid)
+            self.cache.release(rid)
+            latency = time.time() - state.created_at
+            text = self.model.detokenize(state.generated)
+            result = GenerationResult(
+                request_id=rid,
+                text=text,
+                generated_tokens=len(state.generated),
+                latency_ms=round(latency * 1000, 3),
+                finish_reason="length",
+                model=self.model.name,
+            )
+            self._completed += 1
+            prom.REQUESTS_TOTAL.labels(status="ok").inc()
+            prom.REQUEST_LATENCY.observe(latency)
+            if state.done and not state.done.done():
+                state.done.set_result(result)
+            if state.stream is not None:
+                state.stream.put_nowait(None)
+
+        stats = self.cache.stats()
+        prom.KV_USED_PAGES.set(float(stats["used_pages"]))
+        prom.KV_PRESSURE_EVENTS.set(float(stats["pressure_events"]))
+        prom.ACTIVE_REQUESTS.set(len(self.active))
+
+    def _complete_batch(self, batch: list[RequestState]) -> None:
+        completed: list[str] = []
+        batch_tokens = self.model.complete_batch(batch)
+        for state, tokens in zip(batch, batch_tokens, strict=True):
+            for token in tokens:
+                state.generated.append(token)
+                if state.stream is not None:
+                    state.stream.put_nowait(token)
+                self.cache.append_token(state.request_id)
+                prom.TOKENS_GENERATED.inc()
+                if state.is_complete:
+                    break
             if state.is_complete:
                 completed.append(state.request_id)
 
