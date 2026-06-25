@@ -10,7 +10,7 @@ set -euo pipefail
 
 MODEL="${MODEL:-meta-llama/Meta-Llama-3-8B}"
 VLLM_VERSION="${VLLM_VERSION:-0.23.0}"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+PYTHON_BIN="${PYTHON_BIN:-3.12}"
 MIN_SINGLE_VRAM_GIB="${MIN_SINGLE_VRAM_GIB:-0}"
 MIN_TOTAL_VRAM_GIB="${MIN_TOTAL_VRAM_GIB:-22}"
 
@@ -38,9 +38,14 @@ uv pip install --upgrade pip wheel setuptools
 uv pip install "vllm[bench]==${VLLM_VERSION}" --torch-backend=auto
 uv pip install -e ".[gpu,dev]"
 
-python scripts/gpu_preflight.py \
-  --min-single-vram-gib "$MIN_SINGLE_VRAM_GIB" \
+preflight_args=(
+  --min-single-vram-gib "$MIN_SINGLE_VRAM_GIB"
   --min-total-vram-gib "$MIN_TOTAL_VRAM_GIB"
+)
+if [[ "$MODEL" == meta-llama/* || "${REQUIRE_HF_TOKEN:-0}" == "1" ]]; then
+  preflight_args+=(--require-hf-token)
+fi
+python scripts/gpu_preflight.py "${preflight_args[@]}"
 python -m compileall -q inferengine scripts bench/vllm
 pytest -q
 

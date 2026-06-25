@@ -14,6 +14,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--min-single-vram-gib", type=float, default=22.0)
     parser.add_argument("--min-total-vram-gib", type=float, default=22.0)
     parser.add_argument("--min-compute-capability", type=float, default=7.5)
+    parser.add_argument("--require-hf-token", action="store_true")
     return parser.parse_args()
 
 
@@ -56,7 +57,8 @@ def main() -> int:
     checks.append(("transformers installed", importlib.util.find_spec("transformers") is not None, "python package"))
     checks.append(("triton installed", importlib.util.find_spec("triton") is not None, "python package"))
     checks.append(("vllm installed", importlib.util.find_spec("vllm") is not None, "python package"))
-    checks.append(("Hugging Face token", bool(os.getenv("HF_TOKEN")), "HF_TOKEN environment variable"))
+    if args.require_hf_token:
+        checks.append(("Hugging Face token", bool(os.getenv("HF_TOKEN")), "HF_TOKEN environment variable"))
     for name, passed, detail in checks:
         print(f"{'PASS' if passed else 'FAIL':4}  {name:28} {detail}")
     return 0 if all(passed for _, passed, _ in checks) else 2
