@@ -71,4 +71,4 @@ export MAX_MODEL_LEN="${MAX_MODEL_LEN:-2048}"
 export VERIFY_STRICT="${VERIFY_STRICT:-0}"
 export RESULT_DIR="${RESULT_DIR:-benchmark-results/lightning-$(date -u +%Y%m%dT%H%M%SZ)}"
 
-./bench/vllm/run_pair.sh
+bash ./bench/vllm/run_pair.sh
