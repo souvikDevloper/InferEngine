@@ -14,7 +14,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 MIN_SINGLE_VRAM_GIB="${MIN_SINGLE_VRAM_GIB:-0}"
 MIN_TOTAL_VRAM_GIB="${MIN_TOTAL_VRAM_GIB:-22}"
 
-if [[ -z "${HF_TOKEN:-}" ]]; then
+if [[ -z "${HF_TOKEN:-}" && ( "$MODEL" == meta-llama/* || "${REQUIRE_HF_TOKEN:-0}" == "1" ) ]]; then
   echo "HF_TOKEN is required for gated Llama models. Export it before running." >&2
   exit 2
 fi
