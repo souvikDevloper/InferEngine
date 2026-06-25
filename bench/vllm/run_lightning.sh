@@ -36,6 +36,7 @@ source .venv-lightning/bin/activate
 
 uv pip install --upgrade pip wheel setuptools
 uv pip install "vllm[bench]==${VLLM_VERSION}" --torch-backend=auto
+uv pip install "pyarrow<21"
 uv pip install -e ".[gpu,dev]"
 
 preflight_args=(
