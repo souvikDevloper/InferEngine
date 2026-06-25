@@ -96,6 +96,12 @@ class HuggingFaceContinuousDecoder:
         return [outputs[state.request_id] for state in states]
 
     def _prefill(self, states: Sequence[Any]) -> dict[str, str]:
+        # A prefill can happen while an older decode cohort is still active if
+        # the scheduler admits replacement requests into freed batch slots.
+        # Materialize that older cohort before assigning self._cohort to the new
+        # prefill batch; otherwise older RequestState objects keep stale
+        # CohortMember handles that no longer have a backing CohortCache.
+        self._materialize_cohort_members()
         encoded = [{"input_ids": state.prompt_tokens} for state in states]
         batch = self.tokenizer.pad(encoded, padding=True, return_tensors="pt").to(self.input_device)
         result = self.model(**batch, use_cache=True, return_dict=True)
