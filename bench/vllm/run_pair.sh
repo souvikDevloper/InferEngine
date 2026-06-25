@@ -12,6 +12,7 @@ INPUT_LEN="${INPUT_LEN:-512}"
 OUTPUT_LEN="${OUTPUT_LEN:-128}"
 MAX_CONCURRENCY="${MAX_CONCURRENCY:-32}"
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-4096}"
+RANDOM_RANGE_RATIO="${RANDOM_RANGE_RATIO:-0.5}"
 TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-1}"
 VLLM_GPU_MEMORY_UTILIZATION="${VLLM_GPU_MEMORY_UTILIZATION:-0.90}"
 RESULT_DIR="${RESULT_DIR:-benchmark-results/$(date -u +%Y%m%dT%H%M%SZ)}"
@@ -48,7 +49,7 @@ common=(
   --dataset-name random
   --random-input-len "$INPUT_LEN"
   --random-output-len "$OUTPUT_LEN"
-  --random-range-ratio 1
+  --random-range-ratio "$RANDOM_RANGE_RATIO"
   --num-prompts "$NUM_PROMPTS"
   --max-concurrency "$MAX_CONCURRENCY"
   --request-rate inf
