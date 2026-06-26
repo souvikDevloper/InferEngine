@@ -51,6 +51,29 @@ MODEL=meta-llama/Meta-Llama-3-8B \
 
 `run_pair.sh` is only an orchestrator. Both measurements are executed by `vllm bench serve`; it does not generate requests or calculate latency. `verify.py` reads the two official JSON results and applies the 0.91 gate.
 
+## Paged-attention backend mode
+
+The custom `transformers` backend is useful for scheduler/cache experiments, but it does not use page-native attention kernels. For the real paged-attention path, run:
+
+```bash
+INFERENGINE_BACKEND=vllm_paged \
+MODEL=meta-llama/Meta-Llama-3-8B \
+./bench/vllm/run_pair.sh
+```
+
+This starts:
+
+- InferEngine API on port `8000`;
+- a private vLLM paged-attention backend on port `8002`;
+- the direct vLLM baseline on port `8001`.
+
+The official benchmark client still hits InferEngine and vLLM separately. This profile measures the overhead of InferEngine's OpenAI-compatible API over vLLM's real paged-attention/block-manager engine. It should be reported as a vLLM-backed paged-attention mode, not as proof that the pure Transformers scheduler has achieved vLLM parity.
+
 ## Current verification status
 
-No A10G result is checked into this repository. InferEngine now has a real Hugging Face LLaMA CUDA backend with batched prefill/decode and a standalone Triton fused-QKV kernel, but the fused kernel is not yet wired into every attention layer and mixed-length KV tensors are repacked. The resume claim remains unverified until the retained A10G run passes the 0.91 gate.
+No A10G result is checked into this repository. InferEngine now has two GPU paths:
+
+- `INFERENGINE_BACKEND=transformers`: custom scheduler with Hugging Face CUDA execution; this remains below the 0.91 vLLM parity gate on the latest exploratory A100 smoke runs.
+- `INFERENGINE_BACKEND=vllm_paged`: OpenAI-compatible InferEngine API backed by vLLM's real paged-attention backend; this is the intended path for a near-term paged-attention parity gate.
+
+The resume claim remains unverified until a retained GPU run passes the 0.91 gate and the backend mode is stated with the result.

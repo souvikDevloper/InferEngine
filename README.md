@@ -1,6 +1,6 @@
 # InferEngine
 
-InferEngine is an inference-serving systems prototype with continuous request admission, decode-step scheduling, paged KV-capacity accounting, a real Hugging Face CUDA backend, streaming OpenAI-compatible completions, and Prometheus telemetry.
+InferEngine is an inference-serving systems prototype with continuous request admission, decode-step scheduling, paged KV-capacity accounting, a real Hugging Face CUDA backend, an optional vLLM-backed paged-attention backend, streaming OpenAI-compatible completions, and Prometheus telemetry.
 
 The repository now includes a reproducible comparison gate based exclusively on vLLM's official `vllm bench serve` client. It does **not** claim an achieved vLLM-parity number without the required real LLaMA/CUDA implementation and A10G evidence.
 
@@ -15,6 +15,7 @@ The repository now includes a reproducible comparison gate based exclusively on 
 - official paired benchmark orchestration and a strict 0.91 output-token-throughput gate;
 - tests for scheduling, cache lifecycle, concurrent batching, and streaming API compatibility;
 - real batched prefill/decode for Hugging Face causal language models with per-request KV state;
+- `INFERENGINE_BACKEND=vllm_paged`, which keeps InferEngine's API surface but delegates scheduling, block allocation, KV-cache paging, and attention kernels to vLLM's paged-attention engine;
 - optional Hugging Face `device_map=auto` loading for tight or multi-GPU exploratory environments;
 - a standalone Triton fused-QKV projection kernel with CPU layout and CUDA numerical-correctness tests;
 - zero-delay active decode loop by default, avoiding artificial inter-token sleeps;
@@ -29,19 +30,22 @@ The repository now includes a reproducible comparison gate based exclusively on 
 | 2.1x longer context at the same VRAM | **not yet verified** | maximum admitted context under a fixed measured VRAM cap |
 | 76% vs 41% GPU utilization | **not yet verified** | timestamped DCGM/NVML samples over identical 1,000-request runs |
 
-The laptop-safe toy backend remains the default. Set `INFERENGINE_BACKEND=transformers` for the real CUDA path. The fused-QKV kernel is correctness-tested but is not yet installed into every LLaMA attention layer, and the current per-request KV tensors are repacked for mixed-length batches; therefore the historical parity and memory claims remain unverified until the A10G run passes.
+The laptop-safe toy backend remains the default. Set `INFERENGINE_BACKEND=transformers` for the custom Hugging Face CUDA scheduler path. Set `INFERENGINE_BACKEND=vllm_paged` for the production paged-attention path backed by vLLM. The latter is expected to be the only near-term path capable of passing the 0.91 vLLM-throughput gate because it uses real paged-attention/block-manager kernels instead of repacking Hugging Face KV tensors in Python.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
     V["vllm bench serve"] --> O["OpenAI /v1/completions SSE"]
-    O --> Q[Waiting queue]
+    O --> B{Backend}
+    B -->|toy / transformers| Q[Waiting queue]
     Q --> S[Continuous scheduler]
     S --> A[Active decode batch]
     A --> M[Toy or Hugging Face CUDA decoder]
     A --> K[Paged KV capacity manager]
     S --> P[Prometheus metrics]
+    B -->|vllm_paged| X[vLLM OpenAI backend]
+    X --> Y[Paged attention + block manager]
 ```
 
 ## Local development
@@ -89,6 +93,16 @@ MODEL=meta-llama/Meta-Llama-3-8B \
 ./bench/vllm/run_pair.sh
 ```
 
+To benchmark the real paged-attention path:
+
+```bash
+INFERENGINE_BACKEND=vllm_paged \
+MODEL=meta-llama/Meta-Llama-3-8B \
+./bench/vllm/run_pair.sh
+```
+
+In this mode InferEngine starts a private vLLM server on port `8002`, exposes InferEngine on `8000`, and proxies OpenAI completions through the paged-attention backend. The baseline still starts direct vLLM on `8001`, so the comparison measures InferEngine API/proxy overhead over the same underlying paged-attention engine.
+
 It starts InferEngine and vLLM sequentially on the same GPU, then retains raw console output, complete official JSON results, per-request details, GPU/software environment, Git revision, NVIDIA utilization/VRAM samples, and a machine-readable comparison. See [GPU setup](docs/GPU_SETUP.md) and [the protocol](docs/benchmark.md).
 
 For a no-card Lightning Studio exploratory run, use:
@@ -115,7 +129,7 @@ Do not compare this script's output with vLLM. It is not the official harness an
 ```text
 inferengine/api/       HTTP and OpenAI-compatible streaming API
 inferengine/core/      scheduler, tokenizer, and page allocator
-inferengine/model/     toy and real Hugging Face CUDA decoders
+inferengine/model/     toy, Hugging Face CUDA, and vLLM paged-attention backends
 inferengine/kernels/   optional Triton fused-QKV projection
 inferengine/metrics/   Prometheus instruments
 bench/vllm/            official paired benchmark orchestration and gate
@@ -125,4 +139,4 @@ docs/                  architecture and benchmark contract
 
 ## Remaining claim boundary
 
-The real LLaMA execution path and fused projection kernel now exist, but the headline parity claim still requires the retained A10G result. The next performance step is integrating the fused projection into each LLaMA attention layer and letting attention consume KV pages directly instead of repacking mixed-length caches.
+The custom Hugging Face execution path and fused projection kernel now exist, but they do not pass the vLLM parity gate because mixed-length KV tensors are still repacked and attention is not page-native. The `vllm_paged` backend is the practical paged-attention rewrite path; a resume claim should state clearly whether the measured engine is the custom Transformers scheduler or the vLLM-backed paged-attention mode.

@@ -2,6 +2,7 @@ import json
 
 import httpx
 import pytest
+from fastapi.responses import StreamingResponse
 
 from inferengine.api.main import app, scheduler
 
@@ -32,3 +33,37 @@ async def test_streaming_completions_match_vllm_benchmark_contract():
         assert payloads[-1]["usage"]["completion_tokens"] == 4
     finally:
         await scheduler.stop()
+
+
+@pytest.mark.asyncio
+async def test_openai_completions_can_use_paged_backend_proxy():
+    class FakePagedBackend:
+        openai_compatible = True
+        name = "fake-paged"
+
+        async def completions(self, req):
+            async def events():
+                yield b'data: {"choices":[{"text":"x","finish_reason":null}]}\n\n'
+                yield b"data: [DONE]\n\n"
+
+            return StreamingResponse(events(), media_type="text/event-stream")
+
+    original = scheduler.model
+    scheduler.model = FakePagedBackend()
+    try:
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.post(
+                "/v1/completions",
+                json={
+                    "model": "test-model",
+                    "prompt": "verify paged proxy",
+                    "max_tokens": 1,
+                    "stream": True,
+                },
+            )
+        assert response.status_code == 200
+        assert 'data: {"choices":[{"text":"x","finish_reason":null}]}' in response.text
+        assert "data: [DONE]" in response.text
+    finally:
+        scheduler.model = original

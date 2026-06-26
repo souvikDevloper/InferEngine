@@ -21,6 +21,10 @@ gpu = [
   "safetensors>=0.5.0",
   "huggingface-hub>=0.33.0",
 ]
+paged = [
+  "vllm[bench]>=0.10.0",
+  "transformers>=4.57.0,<5",
+]
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]

@@ -56,4 +56,8 @@ def build_backend(kind: str | None = None, model_id: str | None = None) -> Decod
         return HuggingFaceContinuousDecoder(
             model_id=model_id or os.getenv("INFERENGINE_MODEL", "meta-llama/Meta-Llama-3-8B")
         )
-    raise ValueError(f"unknown INFERENGINE_BACKEND={selected!r}; use 'toy' or 'transformers'")
+    if selected in {"vllm", "vllm_paged", "paged"}:
+        from inferengine.model.vllm_paged import VLLMPagedBackend
+
+        return VLLMPagedBackend(model_id=model_id or os.getenv("INFERENGINE_MODEL", "meta-llama/Meta-Llama-3-8B"))
+    raise ValueError(f"unknown INFERENGINE_BACKEND={selected!r}; use 'toy', 'transformers', or 'vllm_paged'")

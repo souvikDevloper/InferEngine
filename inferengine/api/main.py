@@ -16,14 +16,26 @@ from inferengine.core.scheduler import ContinuousBatchScheduler
 scheduler = ContinuousBatchScheduler(EngineConfig.from_env())
 
 
+def openai_backend():
+    model = scheduler.model
+    return model if getattr(model, "openai_compatible", False) else None
+
+
 def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI):
-        await scheduler.start()
+        backend = openai_backend()
+        if backend is not None:
+            await backend.start()
+        else:
+            await scheduler.start()
         try:
             yield
         finally:
-            await scheduler.stop()
+            if backend is not None:
+                await backend.stop()
+            else:
+                await scheduler.stop()
 
     app = FastAPI(
         title="InferEngine",
@@ -34,10 +46,24 @@ def create_app() -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
+        backend = openai_backend()
+        if backend is not None:
+            await backend.health()
         return HealthResponse(status="ok")
 
     @app.post("/v1/generate", response_model=GenerateResponse)
     async def generate(req: GenerateRequest) -> GenerateResponse:
+        backend = openai_backend()
+        if backend is not None:
+            data = await backend.generate(req.prompt, req.max_new_tokens)
+            return GenerateResponse(
+                request_id=f"paged-{uuid.uuid4()}",
+                text=data["text"],
+                generated_tokens=data["generated_tokens"],
+                latency_ms=0.0,
+                finish_reason=data["finish_reason"],
+                model=backend.name,
+            )
         try:
             result = await scheduler.submit(req.prompt, req.max_new_tokens)
             return GenerateResponse(**result.__dict__)
@@ -48,6 +74,9 @@ def create_app() -> FastAPI:
 
     @app.get("/v1/models")
     async def models() -> dict:
+        backend = openai_backend()
+        if backend is not None:
+            return await backend.models()
         return {
             "object": "list",
             "data": [{"id": scheduler.model.name, "object": "model", "owned_by": "inferengine"}],
@@ -55,6 +84,9 @@ def create_app() -> FastAPI:
 
     @app.post("/v1/completions")
     async def completions(req: CompletionRequest):
+        backend = openai_backend()
+        if backend is not None:
+            return await backend.completions(req)
         if not req.stream:
             result = await scheduler.submit(req.prompt, req.max_tokens)
             return {
