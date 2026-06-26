@@ -5,7 +5,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -83,10 +83,11 @@ def create_app() -> FastAPI:
         }
 
     @app.post("/v1/completions")
-    async def completions(req: CompletionRequest):
+    async def completions(request: Request):
         backend = openai_backend()
         if backend is not None:
-            return await backend.completions(req)
+            return await backend.completions_raw(await request.body())
+        req = CompletionRequest.model_validate(await request.json())
         if not req.stream:
             result = await scheduler.submit(req.prompt, req.max_tokens)
             return {

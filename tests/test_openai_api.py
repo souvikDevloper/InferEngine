@@ -40,8 +40,11 @@ async def test_openai_completions_can_use_paged_backend_proxy():
     class FakePagedBackend:
         openai_compatible = True
         name = "fake-paged"
+        body = b""
 
-        async def completions(self, req):
+        async def completions_raw(self, body):
+            self.body = body
+
             async def events():
                 yield b'data: {"choices":[{"text":"x","finish_reason":null}]}\n\n'
                 yield b"data: [DONE]\n\n"
@@ -65,5 +68,6 @@ async def test_openai_completions_can_use_paged_backend_proxy():
         assert response.status_code == 200
         assert 'data: {"choices":[{"text":"x","finish_reason":null}]}' in response.text
         assert "data: [DONE]" in response.text
+        assert json.loads(scheduler.model.body)["prompt"] == "verify paged proxy"
     finally:
         scheduler.model = original

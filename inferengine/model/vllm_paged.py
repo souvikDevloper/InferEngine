@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import subprocess
 from pathlib import Path
@@ -91,6 +92,28 @@ class VLLMPagedBackend:
         response = await self._http_client().post(f"{self.upstream_url}/v1/completions", json=payload, timeout=None)
         return _checked_json(response)
 
+    async def completions_raw(self, body: bytes):
+        """Proxy an OpenAI completions request without model validation.
+
+        The paged backend intentionally delegates OpenAI request semantics to
+        vLLM. Keeping the request body raw avoids Pydantic parsing and JSON
+        re-serialization in the hot benchmark path.
+        """
+        payload = json.loads(body)
+        if not payload.get("model"):
+            payload["model"] = self.model_id
+            body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        if payload.get("stream"):
+            return StreamingResponse(self._stream_completion_raw(body), media_type="text/event-stream")
+
+        response = await self._http_client().post(
+            f"{self.upstream_url}/v1/completions",
+            content=body,
+            headers={"content-type": "application/json"},
+            timeout=None,
+        )
+        return _checked_json(response)
+
     async def generate(self, prompt: str, max_new_tokens: int) -> dict[str, Any]:
         payload = {
             "model": self.model_id,
@@ -156,7 +179,21 @@ class VLLMPagedBackend:
             if response.status_code >= 400:
                 body = await response.aread()
                 raise HTTPException(status_code=response.status_code, detail=body.decode("utf-8", "replace"))
-            async for chunk in response.aiter_bytes():
+            async for chunk in response.aiter_raw():
+                yield chunk
+
+    async def _stream_completion_raw(self, body: bytes):
+        async with self._http_client().stream(
+            "POST",
+            f"{self.upstream_url}/v1/completions",
+            content=body,
+            headers={"content-type": "application/json"},
+            timeout=None,
+        ) as response:
+            if response.status_code >= 400:
+                body = await response.aread()
+                raise HTTPException(status_code=response.status_code, detail=body.decode("utf-8", "replace"))
+            async for chunk in response.aiter_raw():
                 yield chunk
 
     async def _is_healthy(self) -> bool:
