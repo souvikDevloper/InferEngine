@@ -1,0 +1,151 @@
+RUN_ID=lightning-a100-paged-qwen-rawproxy-20260626T042528Z
+commit=5261cca
+gpu=NVIDIA A100-SXM4-80GB, 81920 MiB, 580.159.03
+config MODEL=Qwen/Qwen2.5-7B-Instruct NUM_PROMPTS=100 INPUT_LEN=256 OUTPUT_LEN=64 MAX_CONCURRENCY=16 MAX_MODEL_LEN=2048 BACKEND=vllm_paged
+started=2026-06-26T04:25:28Z
+WARNING 06-26 04:26:35 [config.py:71] Support for Transformers v4 is deprecated. The Transformers v4 codepath will become unmaintained in vLLM v0.22.0 and will be removed in vLLM v0.24.0. Please upgrade to Transformers v5: pip install --upgrade transformers
+Namespace(subparser='bench', bench_type='serve', dispatch_function=<function BenchmarkServingSubcommand.cmd at 0x74d5d49f7e20>, trust_remote_code=False, seed=42, num_prompts=100, dataset_name='random', no_stream=False, dataset_path=None, no_oversample=False, skip_chat_template=False, enable_multimodal_chat=False, disable_shuffle=False, custom_output_len=256, custom_ensure_client_side_data=False, spec_bench_output_len=256, spec_bench_category=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, timed_trace_chunk_hash_size=16, timed_trace_sec_multiplier=1, timed_trace_label_timestamp='timestamp', timed_trace_label_input_length='input_length', timed_trace_label_output_length='output_length', timed_trace_label_hash_ids='hash_ids', blazedit_min_distance=0.0, blazedit_max_distance=1.0, asr_max_audio_len_sec=inf, asr_min_audio_len_sec=0.0, random_input_len=256, random_output_len=64, random_range_ratio='0.5', random_prefix_len=0, random_batch_size=1, no_reranker=False, random_mm_base_items_per_request=1, random_mm_num_mm_items_range_ratio=0.0, random_mm_limit_mm_per_prompt={'image': 255, 'video': 1}, random_mm_bucket_config={(256, 256, 1): 0.5, (720, 1280, 1): 0.5, (720, 1280, 16): 0.0}, hf_subset=None, hf_split=None, hf_name=None, hf_output_len=None, prefix_repetition_prefix_len=256, prefix_repetition_suffix_len=256, prefix_repetition_num_prefixes=10, prefix_repetition_output_len=128, speed_bench_dataset_subset='qualitative', speed_bench_output_len=4096, speed_bench_category=None, label='inferengine', backend='vllm', base_url='http://127.0.0.1:8000', host='127.0.0.1', port=8000, endpoint='/v1/completions', header=None, max_concurrency=16, model='Qwen/Qwen2.5-7B-Instruct', input_len=None, output_len=None, tokenizer='Qwen/Qwen2.5-7B-Instruct', tokenizer_mode='auto', use_beam_search=False, logprobs=None, request_rate=inf, burstiness=1.0, disable_tqdm=False, num_warmups=0, profile=False, save_result=True, save_detailed=True, append_result=False, metadata=['system=inferengine'], result_dir='benchmark-results/lightning-a100-paged-qwen-rawproxy-20260626T042528Z', result_filename='inferengine.json', ignore_eos=True, self_timed=None, percentile_metrics='ttft,tpot,itl', metric_percentiles='50,99', goodput=None, request_id_prefix='bench-c63fe11a-', top_p=None, top_k=None, min_p=None, temperature=None, frequency_penalty=None, presence_penalty=None, repetition_penalty=None, served_model_name=None, lora_modules=None, lora_assignment='random', ramp_up_strategy=None, ramp_up_start_rps=None, ramp_up_end_rps=None, ready_check_timeout_sec=0, chat_template_kwargs=None, extra_body=None, skip_tokenizer_init=False, insecure=False, plot_timeline=False, timeline_itl_thresholds='25,50', plot_dataset_stats=False)
+INFO 06-26 04:26:40 [utils.py:90] Sampling input_len from [128, 384] and output_len from [32, 96]
+WARNING: vllm bench serve no longer sets temperature==0 (greedy) in requests by default. The default will be determined on the server side and can be model/API specific. For the old behavior, include --temperature=0.
+Starting initial single prompt test run...
+Skipping endpoint ready check.
+Starting main benchmark run...
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 16
+  0%|          | 0/100 [00:00<?, ?it/s]  1%|          | 1/100 [00:00<01:11,  1.38it/s]  2%|▏         | 2/100 [00:00<00:37,  2.60it/s]  4%|▍         | 4/100 [00:01<00:20,  4.72it/s]  7%|▋         | 7/100 [00:01<00:10,  8.99it/s] 10%|█         | 10/100 [00:01<00:06, 12.89it/s] 12%|█▏        | 12/100 [00:01<00:06, 14.43it/s] 18%|█▊        | 18/100 [00:01<00:03, 23.37it/s] 21%|██        | 21/100 [00:01<00:05, 15.53it/s] 24%|██▍       | 24/100 [00:02<00:05, 14.78it/s] 26%|██▌       | 26/100 [00:02<00:05, 14.37it/s] 28%|██▊       | 28/100 [00:02<00:04, 14.83it/s] 34%|███▍      | 34/100 [00:02<00:02, 23.37it/s] 37%|███▋      | 37/100 [00:02<00:03, 16.56it/s] 40%|████      | 40/100 [00:02<00:03, 17.92it/s] 45%|████▌     | 45/100 [00:03<00:02, 18.98it/s] 48%|████▊     | 48/100 [00:03<00:03, 14.62it/s] 51%|█████     | 51/100 [00:03<00:03, 15.82it/s] 54%|█████▍    | 54/100 [00:03<00:02, 18.09it/s] 57%|█████▋    | 57/100 [00:04<00:02, 16.86it/s] 59%|█████▉    | 59/100 [00:04<00:02, 16.84it/s] 62%|██████▏   | 62/100 [00:04<00:02, 17.45it/s] 66%|██████▌   | 66/100 [00:04<00:01, 20.56it/s] 69%|██████▉   | 69/100 [00:04<00:01, 22.16it/s] 72%|███████▏  | 72/100 [00:04<00:01, 15.96it/s] 74%|███████▍  | 74/100 [00:05<00:01, 15.22it/s] 76%|███████▌  | 76/100 [00:05<00:01, 14.86it/s] 79%|███████▉  | 79/100 [00:05<00:01, 17.55it/s] 81%|████████  | 81/100 [00:05<00:01, 18.02it/s] 84%|████████▍ | 84/100 [00:05<00:00, 20.85it/s] 87%|████████▋ | 87/100 [00:05<00:00, 20.46it/s] 90%|█████████ | 90/100 [00:05<00:00, 21.82it/s] 93%|█████████▎| 93/100 [00:05<00:00, 20.29it/s] 96%|█████████▌| 96/100 [00:06<00:00, 19.86it/s] 99%|█████████▉| 99/100 [00:06<00:00, 15.35it/s]100%|██████████| 100/100 [00:06<00:00, 15.39it/s]
+tip: install termplotlib and gnuplot to plot the metrics
+============ Serving Benchmark Result ============
+Successful requests:                     100       
+Failed requests:                         0         
+Maximum request concurrency:             16        
+Benchmark duration (s):                  6.50      
+Total input tokens:                      26286     
+Total generated tokens:                  6339      
+Request throughput (req/s):              15.39     
+Output token throughput (tok/s):         975.84    
+Peak output token throughput (tok/s):    1120.00   
+Peak concurrent requests:                35.00     
+Total token throughput (tok/s):          5022.36   
+---------------Time to First Token----------------
+Mean TTFT (ms):                          105.51    
+Median TTFT (ms):                        66.00     
+P50 TTFT (ms):                           66.00     
+P99 TTFT (ms):                           389.61    
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          13.45     
+Median TPOT (ms):                        13.63     
+P50 TPOT (ms):                           13.63     
+P99 TPOT (ms):                           15.50     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           13.45     
+Median ITL (ms):                         10.84     
+P50 ITL (ms):                            10.84     
+P99 ITL (ms):                            36.09     
+==================================================
+{
+  "sample_interval_ms": 200,
+  "samples": 99,
+  "gpu_utilization_mean_percent": 32.05050505050505,
+  "gpu_utilization_p50_percent": 0.0,
+  "gpu_utilization_p99_percent": 100.0,
+  "memory_used_peak_mib": 66988.0
+}
+WARNING 06-26 04:27:47 [config.py:71] Support for Transformers v4 is deprecated. The Transformers v4 codepath will become unmaintained in vLLM v0.22.0 and will be removed in vLLM v0.24.0. Please upgrade to Transformers v5: pip install --upgrade transformers
+Namespace(subparser='bench', bench_type='serve', dispatch_function=<function BenchmarkServingSubcommand.cmd at 0x7d3cbe9abe20>, trust_remote_code=False, seed=42, num_prompts=100, dataset_name='random', no_stream=False, dataset_path=None, no_oversample=False, skip_chat_template=False, enable_multimodal_chat=False, disable_shuffle=False, custom_output_len=256, custom_ensure_client_side_data=False, spec_bench_output_len=256, spec_bench_category=None, sonnet_input_len=550, sonnet_output_len=150, sonnet_prefix_len=200, sharegpt_output_len=None, timed_trace_chunk_hash_size=16, timed_trace_sec_multiplier=1, timed_trace_label_timestamp='timestamp', timed_trace_label_input_length='input_length', timed_trace_label_output_length='output_length', timed_trace_label_hash_ids='hash_ids', blazedit_min_distance=0.0, blazedit_max_distance=1.0, asr_max_audio_len_sec=inf, asr_min_audio_len_sec=0.0, random_input_len=256, random_output_len=64, random_range_ratio='0.5', random_prefix_len=0, random_batch_size=1, no_reranker=False, random_mm_base_items_per_request=1, random_mm_num_mm_items_range_ratio=0.0, random_mm_limit_mm_per_prompt={'image': 255, 'video': 1}, random_mm_bucket_config={(256, 256, 1): 0.5, (720, 1280, 1): 0.5, (720, 1280, 16): 0.0}, hf_subset=None, hf_split=None, hf_name=None, hf_output_len=None, prefix_repetition_prefix_len=256, prefix_repetition_suffix_len=256, prefix_repetition_num_prefixes=10, prefix_repetition_output_len=128, speed_bench_dataset_subset='qualitative', speed_bench_output_len=4096, speed_bench_category=None, label='vllm', backend='vllm', base_url='http://127.0.0.1:8001', host='127.0.0.1', port=8000, endpoint='/v1/completions', header=None, max_concurrency=16, model='Qwen/Qwen2.5-7B-Instruct', input_len=None, output_len=None, tokenizer='Qwen/Qwen2.5-7B-Instruct', tokenizer_mode='auto', use_beam_search=False, logprobs=None, request_rate=inf, burstiness=1.0, disable_tqdm=False, num_warmups=0, profile=False, save_result=True, save_detailed=True, append_result=False, metadata=['system=vllm'], result_dir='benchmark-results/lightning-a100-paged-qwen-rawproxy-20260626T042528Z', result_filename='vllm.json', ignore_eos=True, self_timed=None, percentile_metrics='ttft,tpot,itl', metric_percentiles='50,99', goodput=None, request_id_prefix='bench-25aedc15-', top_p=None, top_k=None, min_p=None, temperature=None, frequency_penalty=None, presence_penalty=None, repetition_penalty=None, served_model_name=None, lora_modules=None, lora_assignment='random', ramp_up_strategy=None, ramp_up_start_rps=None, ramp_up_end_rps=None, ready_check_timeout_sec=0, chat_template_kwargs=None, extra_body=None, skip_tokenizer_init=False, insecure=False, plot_timeline=False, timeline_itl_thresholds='25,50', plot_dataset_stats=False)
+INFO 06-26 04:27:52 [utils.py:90] Sampling input_len from [128, 384] and output_len from [32, 96]
+WARNING: vllm bench serve no longer sets temperature==0 (greedy) in requests by default. The default will be determined on the server side and can be model/API specific. For the old behavior, include --temperature=0.
+Starting initial single prompt test run...
+Skipping endpoint ready check.
+Starting main benchmark run...
+Traffic request rate: inf
+Burstiness factor: 1.0 (Poisson process)
+Maximum request concurrency: 16
+  0%|          | 0/100 [00:00<?, ?it/s]  1%|          | 1/100 [00:00<01:08,  1.45it/s]  2%|▏         | 2/100 [00:00<00:36,  2.72it/s]  4%|▍         | 4/100 [00:01<00:19,  4.84it/s]  7%|▋         | 7/100 [00:01<00:10,  9.19it/s] 10%|█         | 10/100 [00:01<00:06, 13.17it/s] 12%|█▏        | 12/100 [00:01<00:06, 14.66it/s] 18%|█▊        | 18/100 [00:01<00:03, 25.02it/s] 22%|██▏       | 22/100 [00:01<00:05, 14.85it/s] 25%|██▌       | 25/100 [00:02<00:05, 14.21it/s] 28%|██▊       | 28/100 [00:02<00:04, 15.04it/s] 35%|███▌      | 35/100 [00:02<00:02, 22.40it/s] 38%|███▊      | 38/100 [00:02<00:03, 16.50it/s] 42%|████▏     | 42/100 [00:02<00:03, 18.62it/s] 45%|████▌     | 45/100 [00:03<00:02, 18.94it/s] 48%|████▊     | 48/100 [00:03<00:03, 14.31it/s] 51%|█████     | 51/100 [00:03<00:03, 15.80it/s] 54%|█████▍    | 54/100 [00:03<00:02, 17.83it/s] 57%|█████▋    | 57/100 [00:03<00:02, 16.71it/s] 59%|█████▉    | 59/100 [00:04<00:02, 17.06it/s] 62%|██████▏   | 62/100 [00:04<00:02, 17.25it/s] 66%|██████▌   | 66/100 [00:04<00:01, 19.70it/s] 70%|███████   | 70/100 [00:04<00:01, 23.01it/s] 73%|███████▎  | 73/100 [00:04<00:01, 16.06it/s] 75%|███████▌  | 75/100 [00:05<00:01, 15.34it/s] 78%|███████▊  | 78/100 [00:05<00:01, 17.85it/s] 81%|████████  | 81/100 [00:05<00:01, 17.50it/s] 84%|████████▍ | 84/100 [00:05<00:00, 20.02it/s] 87%|████████▋ | 87/100 [00:05<00:00, 19.08it/s] 90%|█████████ | 90/100 [00:05<00:00, 21.09it/s] 93%|█████████▎| 93/100 [00:05<00:00, 19.87it/s] 96%|█████████▌| 96/100 [00:06<00:00, 19.58it/s] 99%|█████████▉| 99/100 [00:06<00:00, 15.54it/s]100%|██████████| 100/100 [00:06<00:00, 15.58it/s]
+tip: install termplotlib and gnuplot to plot the metrics
+============ Serving Benchmark Result ============
+Successful requests:                     100       
+Failed requests:                         0         
+Maximum request concurrency:             16        
+Benchmark duration (s):                  6.42      
+Total input tokens:                      26286     
+Total generated tokens:                  6339      
+Request throughput (req/s):              15.58     
+Output token throughput (tok/s):         987.45    
+Peak output token throughput (tok/s):    1133.00   
+Peak concurrent requests:                36.00     
+Total token throughput (tok/s):          5082.11   
+---------------Time to First Token----------------
+Mean TTFT (ms):                          96.44     
+Median TTFT (ms):                        61.00     
+P50 TTFT (ms):                           61.00     
+P99 TTFT (ms):                           351.82    
+-----Time per Output Token (excl. 1st token)------
+Mean TPOT (ms):                          13.45     
+Median TPOT (ms):                        13.67     
+P50 TPOT (ms):                           13.67     
+P99 TPOT (ms):                           15.30     
+---------------Inter-token Latency----------------
+Mean ITL (ms):                           13.44     
+Median ITL (ms):                         10.88     
+P50 ITL (ms):                            10.88     
+P99 ITL (ms):                            37.24     
+==================================================
+{
+  "sample_interval_ms": 200,
+  "samples": 98,
+  "gpu_utilization_mean_percent": 32.07142857142857,
+  "gpu_utilization_p50_percent": 0.0,
+  "gpu_utilization_p99_percent": 100.0,
+  "memory_used_peak_mib": 66988.0
+}
+{
+  "claim": "InferEngine output-token throughput is within 9% of vLLM",
+  "pass": true,
+  "throughput_ratio": 0.9882427495958688,
+  "inferengine_output_tokens_per_second": 975.8390699248154,
+  "vllm_output_tokens_per_second": 987.4487521652693,
+  "all_requests_succeeded": true,
+  "configuration_mismatches": {},
+  "official_metrics": {
+    "inferengine": {
+      "request_throughput": 15.394211546376642,
+      "output_throughput": 975.8390699248154,
+      "total_token_throughput": 5022.36151700538,
+      "mean_ttft_ms": 105.51054943998452,
+      "median_ttft_ms": 65.99541100001716,
+      "p50_ttft_ms": 65.99541100001716,
+      "p99_ttft_ms": 389.60510811986757,
+      "mean_itl_ms": 13.445979506491128,
+      "median_itl_ms": 10.8430220000173,
+      "p50_itl_ms": 10.8430220000173,
+      "p99_itl_ms": 36.08674465991953
+    },
+    "vllm": {
+      "request_throughput": 15.577358450311868,
+      "output_throughput": 987.4487521652693,
+      "total_token_throughput": 5082.113194414247,
+      "mean_ttft_ms": 96.4368660800028,
+      "median_ttft_ms": 61.00102900006732,
+      "p50_ttft_ms": 61.00102900006732,
+      "p99_ttft_ms": 351.8242692400441,
+      "mean_itl_ms": 13.435256942298492,
+      "median_itl_ms": 10.87694299985742,
+      "p50_itl_ms": 10.87694299985742,
+      "p99_itl_ms": 37.23542206000275
+    }
+  }
+}
+Evidence: benchmark-results/lightning-a100-paged-qwen-rawproxy-20260626T042528Z
+RESULT_DIR benchmark-results/lightning-a100-paged-qwen-rawproxy-20260626T042528Z
+PASS True RATIO 0.9882
+OUTPUT_TPS infer= 975.8390699248154 vllm= 987.4487521652693
+REQ_TPS infer= 15.394211546376642 vllm= 15.577358450311868
+TOTAL_TPS infer= 5022.36151700538 vllm= 5082.113194414247
+P50_TTFT_MS infer= 65.99541100001716 vllm= 61.00102900006732
+P99_TTFT_MS infer= 389.60510811986757 vllm= 351.8242692400441
+P50_ITL_MS infer= 10.8430220000173 vllm= 10.87694299985742
+P99_ITL_MS infer= 36.08674465991953 vllm= 37.23542206000275
+GPU_MEAN infer= 32.05050505050505 vllm= 32.07142857142857
+PEAK_MEM infer= 66988.0 vllm= 66988.0
+finished=2026-06-26T04:28:00Z

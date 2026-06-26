@@ -1,0 +1,37 @@
+{
+  "claim": "InferEngine output-token throughput is within 9% of vLLM",
+  "pass": true,
+  "throughput_ratio": 0.9882427495958688,
+  "inferengine_output_tokens_per_second": 975.8390699248154,
+  "vllm_output_tokens_per_second": 987.4487521652693,
+  "all_requests_succeeded": true,
+  "configuration_mismatches": {},
+  "official_metrics": {
+    "inferengine": {
+      "request_throughput": 15.394211546376642,
+      "output_throughput": 975.8390699248154,
+      "total_token_throughput": 5022.36151700538,
+      "mean_ttft_ms": 105.51054943998452,
+      "median_ttft_ms": 65.99541100001716,
+      "p50_ttft_ms": 65.99541100001716,
+      "p99_ttft_ms": 389.60510811986757,
+      "mean_itl_ms": 13.445979506491128,
+      "median_itl_ms": 10.8430220000173,
+      "p50_itl_ms": 10.8430220000173,
+      "p99_itl_ms": 36.08674465991953
+    },
+    "vllm": {
+      "request_throughput": 15.577358450311868,
+      "output_throughput": 987.4487521652693,
+      "total_token_throughput": 5082.113194414247,
+      "mean_ttft_ms": 96.4368660800028,
+      "median_ttft_ms": 61.00102900006732,
+      "p50_ttft_ms": 61.00102900006732,
+      "p99_ttft_ms": 351.8242692400441,
+      "mean_itl_ms": 13.435256942298492,
+      "median_itl_ms": 10.87694299985742,
+      "p50_itl_ms": 10.87694299985742,
+      "p99_itl_ms": 37.23542206000275
+    }
+  }
+}

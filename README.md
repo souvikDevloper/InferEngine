@@ -2,7 +2,7 @@
 
 InferEngine is an inference-serving systems prototype with continuous request admission, decode-step scheduling, paged KV-capacity accounting, a real Hugging Face CUDA backend, an optional vLLM-backed paged-attention backend, streaming OpenAI-compatible completions, and Prometheus telemetry.
 
-The repository now includes a reproducible comparison gate based exclusively on vLLM's official `vllm bench serve` client. It does **not** claim an achieved vLLM-parity number without the required real LLaMA/CUDA implementation and A10G evidence.
+The repository includes a reproducible comparison gate based exclusively on vLLM's official `vllm bench serve` client. The vLLM-backed paged-attention path has a passing A100/Qwen evidence run; the exact LLaMA-3/A10G resume variant remains a separate gated-model/hardware run.
 
 ## Implemented
 
@@ -25,6 +25,7 @@ The repository now includes a reproducible comparison gate based exclusively on 
 
 | Resume statement | Status | Required evidence |
 |---|---|---|
+| vLLM-backed paged-attention mode matched vLLM within 9% on Qwen2.5-7B/A100 | **verified** | [`docs/evidence/inferengine-vllm-a100-qwen-20260626.md`](docs/evidence/inferengine-vllm-a100-qwen-20260626.md) |
 | matched vLLM within 9% on LLaMA-3 8B/A10G | **not yet verified** | two successful official vLLM JSON results + passing `comparison.json` |
 | 38% lower GPU fragmentation | **not yet verified** | real CUDA allocator traces for fixed naive and paged-cache experiments |
 | 2.1x longer context at the same VRAM | **not yet verified** | maximum admitted context under a fixed measured VRAM cap |

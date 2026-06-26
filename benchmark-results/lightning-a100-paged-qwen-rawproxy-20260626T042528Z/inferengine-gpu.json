@@ -1,0 +1,8 @@
+{
+  "sample_interval_ms": 200,
+  "samples": 99,
+  "gpu_utilization_mean_percent": 32.05050505050505,
+  "gpu_utilization_p50_percent": 0.0,
+  "gpu_utilization_p99_percent": 100.0,
+  "memory_used_peak_mib": 66988.0
+}
