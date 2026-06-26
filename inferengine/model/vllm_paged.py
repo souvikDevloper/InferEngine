@@ -33,6 +33,7 @@ class VLLMPagedBackend:
         self.process: subprocess.Popen[bytes] | None = None
         self._log_handle: Any | None = None
         self._tokenizer: Any | None = None
+        self._client: httpx.AsyncClient | None = None
 
     @property
     def name(self) -> str:
@@ -57,6 +58,9 @@ class VLLMPagedBackend:
         await self._wait_until_ready()
 
     async def stop(self) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
         if self.process and self.process.poll() is None:
             self.process.terminate()
             try:
@@ -75,8 +79,7 @@ class VLLMPagedBackend:
         return {"status": "ok"}
 
     async def models(self) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.get(f"{self.upstream_url}/v1/models")
+        response = await self._http_client().get(f"{self.upstream_url}/v1/models", timeout=30)
         return _checked_json(response)
 
     async def completions(self, request: Any):
@@ -85,8 +88,7 @@ class VLLMPagedBackend:
         if payload.get("stream"):
             return StreamingResponse(self._stream_completion(payload), media_type="text/event-stream")
 
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post(f"{self.upstream_url}/v1/completions", json=payload)
+        response = await self._http_client().post(f"{self.upstream_url}/v1/completions", json=payload, timeout=None)
         return _checked_json(response)
 
     async def generate(self, prompt: str, max_new_tokens: int) -> dict[str, Any]:
@@ -97,8 +99,7 @@ class VLLMPagedBackend:
             "stream": False,
             "ignore_eos": True,
         }
-        async with httpx.AsyncClient(timeout=None) as client:
-            response = await client.post(f"{self.upstream_url}/v1/completions", json=payload)
+        response = await self._http_client().post(f"{self.upstream_url}/v1/completions", json=payload, timeout=None)
         data = _checked_json(response)
         choice = data["choices"][0]
         usage = data.get("usage") or {}
@@ -149,20 +150,34 @@ class VLLMPagedBackend:
         return cmd
 
     async def _stream_completion(self, payload: dict[str, Any]):
-        async with httpx.AsyncClient(timeout=None) as client:
-            async with client.stream("POST", f"{self.upstream_url}/v1/completions", json=payload) as response:
-                if response.status_code >= 400:
-                    body = await response.aread()
-                    raise HTTPException(status_code=response.status_code, detail=body.decode("utf-8", "replace"))
-                async for chunk in response.aiter_bytes():
-                    yield chunk
+        async with self._http_client().stream(
+            "POST", f"{self.upstream_url}/v1/completions", json=payload, timeout=None
+        ) as response:
+            if response.status_code >= 400:
+                body = await response.aread()
+                raise HTTPException(status_code=response.status_code, detail=body.decode("utf-8", "replace"))
+            async for chunk in response.aiter_bytes():
+                yield chunk
 
     async def _is_healthy(self) -> bool:
         with contextlib.suppress(httpx.HTTPError):
-            async with httpx.AsyncClient(timeout=2) as client:
-                response = await client.get(f"{self.upstream_url}/health")
+            response = await self._http_client().get(f"{self.upstream_url}/health", timeout=2)
             return response.status_code == 200
         return False
+
+    def _http_client(self) -> httpx.AsyncClient:
+        """Return the shared upstream client.
+
+        Keep-alive is important here: the benchmark hits InferEngine with many
+        concurrent streaming requests, and opening a fresh local TCP connection
+        to vLLM for every proxied request shows up directly as TTFT overhead.
+        """
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=None,
+                limits=httpx.Limits(max_connections=512, max_keepalive_connections=512, keepalive_expiry=120),
+            )
+        return self._client
 
     async def _wait_until_ready(self) -> None:
         for _ in range(self.startup_timeout_sec):
